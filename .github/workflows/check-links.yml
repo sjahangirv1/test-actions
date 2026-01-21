@@ -1,0 +1,47 @@
+name: Check Internal Links
+
+on:
+  pull_request:
+    paths:
+      - '**.md'
+  workflow_dispatch:
+
+jobs:
+  check-links:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install dependencies
+        run: npm install -g markdown-link-check
+
+      - name: Get changed markdown files
+        id: changed-files
+        uses: tj-actions/changed-files@v41
+        with:
+          files: |
+            **.md
+
+      - name: Check links in changed files
+        if: steps.changed-files.outputs.any_changed == 'true'
+        run: |
+          EXIT_CODE=0
+          for file in ${{ steps.changed-files.outputs.all_changed_files }}; do
+            echo "Checking $file..."
+            markdown-link-check -c .github/workflows/link-check-config.json "$file" || EXIT_CODE=1
+          done
+          exit $EXIT_CODE
+
+      - name: Comment on PR if links are broken
+        if: failure()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: '**Link Check Failed**: Some internal links in the changed files are broken. Please fix them before merging.'
+            })
