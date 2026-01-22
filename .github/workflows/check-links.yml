@@ -6,6 +6,10 @@ on:
       - '**.md'
   workflow_dispatch:
 
+permissions:
+  issues: write
+  pull-requests: write
+
 jobs:
   check-links:
     runs-on: ubuntu-latest
@@ -28,20 +32,32 @@ jobs:
         if: steps.changed-files.outputs.any_changed == 'true'
         run: |
           EXIT_CODE=0
-          for file in ${{ steps.changed-files.outputs.all_changed_files }}; do
-            echo "Checking $file..."
-            markdown-link-check -c .github/workflows/link-check-config.json "$file" || EXIT_CODE=1
-          done
+          {
+            for file in ${{ steps.changed-files.outputs.all_changed_files }}; do
+              echo "Checking $file..."
+              markdown-link-check -c .github/workflows/link-check-config.json "$file" || EXIT_CODE=1
+            done
+          } 2>&1 | tee link-check-output.txt
           exit $EXIT_CODE
+
+      - name: Save link check status
+        if: always()
+        run: |
+          if [ -f link-check-output.txt ]; then
+            echo "LINK_CHECK_OUTPUT<<EOF" >> $GITHUB_ENV
+            cat link-check-output.txt >> $GITHUB_ENV
+            echo "EOF" >> $GITHUB_ENV
+          fi
 
       - name: Comment on PR if links are broken
         if: failure()
         uses: actions/github-script@v7
         with:
           script: |
+            const output = process.env.LINK_CHECK_OUTPUT || 'No details available';
             github.rest.issues.createComment({
               issue_number: context.issue.number,
               owner: context.repo.owner,
               repo: context.repo.repo,
-              body: '**Link Check Failed**: Some internal links in the changed files are broken. Please fix them before merging.'
+              body: '**Link Check Failed**: Some internal links in the changed files are broken. Please fix them before merging.\n\n```\n' + output + '\n```'
             })
