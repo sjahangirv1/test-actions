@@ -39,7 +39,6 @@ jobs:
             done
           } 2>&1 | tee link-check-output.txt
           exit $EXIT_CODE
-        continue-on-error: true
 
       - name: Save link check status
         if: always()
